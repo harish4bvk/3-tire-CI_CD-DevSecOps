@@ -91,7 +91,6 @@ module "eks" {
 
   ##### depending on network creation
   depends_on = [module.vpc]
-
 }
 
 #######################################################
