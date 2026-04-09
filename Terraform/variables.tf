@@ -25,5 +25,9 @@ variable "cluster_name" {
 variable "cluster_version" {
   description = "version of the eks cluster"
   type        = string
-  default     = "1.32"
+  default     = "1.29"
+}
+
+variable "projectname" {
+  default = "jerney"
 }
