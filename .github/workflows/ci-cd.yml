@@ -61,7 +61,7 @@ jobs:
     needs: lint
     strategy:
       matrix:
-        component: [backend, frontend]
+        component: [app/backend, app/frontend]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -95,7 +95,7 @@ jobs:
       packages: write # Needed to push to GHCR
     strategy:
       matrix:
-        component: [backend, frontend]
+        component: [app/backend, app/frontend]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -144,7 +144,7 @@ jobs:
     needs: build
     strategy:
       matrix:
-        component: [backend, frontend]
+        component: [app/backend, app/frontend]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -202,7 +202,7 @@ jobs:
     continue-on-error: true
     strategy:
       matrix:
-        component: [backend, frontend]
+        component: [app/backend, app/frontend]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
