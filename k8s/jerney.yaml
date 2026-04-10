@@ -200,7 +200,11 @@ spec:
               echo "DB is ready!"
       containers:
         - name: backend
+<<<<<<< HEAD
+          image: ghcr.io/harish4bvk/3-tire-CI_CD-DevSecOps/app/backend:23a0905
+=======
           image: ghcr.io/harish4bvk/3-tire-CI_CD-DevSecOps/app/backend:2146df5
+>>>>>>> devops
           ports:
             - containerPort: 5000
               protocol: TCP
@@ -307,7 +311,11 @@ spec:
           effect: "NoSchedule"
       containers:
         - name: frontend
+<<<<<<< HEAD
+          image: ghcr.io/harish4bvk/3-tire-CI_CD-DevSecOps/app/frontend:23a0905
+=======
           image: ghcr.io/harish4bvk/3-tire-CI_CD-DevSecOps/app/frontend:2146df5
+>>>>>>> devops
           ports:
             - containerPort: 8080
               protocol: TCP
