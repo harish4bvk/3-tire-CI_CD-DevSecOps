@@ -1,8 +1,13 @@
 # Terraform
-Terraform/.terraform/
-Terraform/*.tfstate
-Terraform/*.tfstate.backup
-Terraform/.terraform.lock.hcl
+.terraform/
+*.tfstate
+*.tfstate.backup
+.terraform.lock.hcl
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
 
 # Node
 node_modules/
