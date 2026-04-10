@@ -13,7 +13,7 @@ on:
     types:
       - completed
     branches:
-      - main   # Only deploy from main branch
+      - Devops   # Only deploy from main branch
 
 # Security: restrict default permissions to read-only
 permissions:
