@@ -1,180 +1,177 @@
-# 🛤️ Jerney — Blog Platform
+📐 Architecture Overview
+Infrastructure Architecture
+┌─────────────────────────────────────────────────────────┐
+│                        AWS Cloud                         │
+│                                                         │
+│  ┌──────────────────────────────────────────────────┐   │
+│  │                  VPC (Multi-AZ)                  │   │
+│  │                                                  │   │
+│  │  ┌────────────────────────────────────────────┐  │   │
+│  │  │           EKS Auto Mode Cluster            │  │   │
+│  │  │                                            │  │   │
+│  │  │  ┌──────────┐  ┌──────────┐  ┌─────────┐  │  │   │
+│  │  │  │ Frontend │  │ Backend  │  │Postgres │  │  │   │
+│  │  │  │  (React) │→ │(Node.js) │→ │   DB    │  │  │   │
+│  │  │  │ Nginx    │  │ Express  │  │         │  │  │   │
+│  │  │  └──────────┘  └──────────┘  └─────────┘  │  │   │
+│  │  │                                            │  │   │
+│  │  │  ┌──────────────────────────────────────┐  │  │   │
+│  │  │  │   AWS Load Balancer (Ingress)        │  │  │   │
+│  │  │  └──────────────────────────────────────┘  │  │   │
+│  │  └────────────────────────────────────────────┘  │   │
+│  │                                                  │   │
+│  │  ┌─────────┐  ┌─────────┐  ┌──────────────────┐ │   │
+│  │  │   ECR   │  │   S3    │  │  Terraform State  │ │   │
+│  │  │(Images) │  │(Logs)   │  │  (Remote Backend) │ │   │
+│  │  └─────────┘  └─────────┘  └──────────────────┘ │   │
+│  └──────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────┘
+CI Pipeline Flow
+  Developer Push / PR
+         │
+         ▼
+  ┌─────────────┐
+  │  Checkout   │  GitHub Actions triggered on push to main / PR
+  └──────┬──────┘
+         │
+         ▼
+  ┌─────────────┐
+  │  Lint &     │  ESLint (frontend) · Node.js test runner (backend)
+  │  Unit Test  │  ✗ Fails here → PR blocked, no image built
+  └──────┬──────┘
+         │
+         ▼
+  ┌─────────────┐
+  │  SAST Scan  │  SonarQube code quality & security analysis
+  │  (SonarQube)│  Quality Gate enforced — fails pipeline on violations
+  └──────┬──────┘
+         │
+         ▼
+  ┌─────────────┐
+  │  Docker     │  Multi-stage Dockerfile build (frontend + backend)
+  │  Build      │  Image tagged with git SHA for full traceability
+  └──────┬──────┘
+         │
+         ▼
+  ┌─────────────┐
+  │  Container  │  Trivy scans image for CVEs (HIGH/CRITICAL = fail)
+  │  Scan       │  No unpatched critical vulnerabilities reach ECR
+  │  (Trivy)    │
+  └──────┬──────┘
+         │
+         ▼
+  ┌─────────────┐
+  │  Push to    │  Image pushed to AWS ECR with SHA + latest tags
+  │  ECR        │  Only clean images are published
+  └──────┬──────┘
+         │
+         ▼
+  ┌─────────────┐
+  │  Manual K8s │  kubectl apply (intentional gate)
+  │  Deploy     │  Helm manifests in ./k8s applied after review
+  └─────────────┘
+       ↑
+   CD gap — planned: ArgoCD GitOps (next project)
 
-A Gen-Z vibe blog platform built with a 3-tier architecture — React frontend, Node.js backend, and PostgreSQL database.
-
-![Tech Stack](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react)
-![Tech Stack](https://img.shields.io/badge/Node.js-20-339933?style=flat-square&logo=node.js)
-![Tech Stack](https://img.shields.io/badge/PostgreSQL-16-4169E1?style=flat-square&logo=postgresql)
-
----
-
-> [!IMPORTANT]
-> **Looking for the full DevSecOps implementation?**
-> Switch to the [`devops`](../../tree/devops) branch for Docker, Kubernetes (EKS Auto Mode), Terraform, CI/CD with GitHub Actions, container security scanning, and more.
->
-> ```bash
-> git checkout devops
-> ```
-
----
-
-## ✨ Features
-
-- 📝 Create blog posts with emoji vibes
-- ✏️ Edit your existing posts
-- 🗑️ Delete posts you're not feeling anymore
-- 💬 Comment on posts
-- 🎨 Gen-Z dark UI with glassmorphism and gradients
-
-## 🏗️ Architecture
-
-```
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│   Frontend   │────▶│   Backend    │────▶│  PostgreSQL   │
-│   (React +   │◀────│  (Node.js +  │◀────│              │
-│    Nginx)    │     │   Express)   │     │              │
-│   Port 80    │     │  Port 5000   │     │  Port 5432   │
-└──────────────┘     └──────────────┘     └──────────────┘
-```
-
-## 📁 Project Structure
-
-```
-Jerney/
-├── frontend/                # React (Vite) frontend
-│   ├── src/                 # React components & pages
-│   ├── nginx.conf           # Nginx config for serving the app
+🗂️ Project Structure
+3-tire-CI_CD-DevSecOps/
+├── .github/
+│   └── workflows/
+│       └── ci.yml              # GitHub Actions CI pipeline
+├── Terraform/
+│   ├── main.tf                 # EKS Auto Mode cluster
+│   ├── vpc.tf                  # VPC, subnets, security groups
+│   ├── ecr.tf                  # ECR repositories
+│   ├── variables.tf
+│   └── outputs.tf
+├── frontend/                   # React (Vite) app
+│   ├── src/
+│   ├── Dockerfile              # Multi-stage build → Nginx
+│   ├── nginx.conf
 │   └── package.json
-├── backend/                 # Node.js Express API
-│   ├── src/                 # Routes, DB connection
+├── backend/                    # Node.js Express API
+│   ├── src/
+│   ├── Dockerfile              # Multi-stage build → Node slim
 │   └── package.json
-├── deploy/                  # EC2 deployment scripts
-│   ├── setup.sh             # One-click EC2 setup script
-│   └── jerney-nginx.conf    # Nginx reverse proxy config
+├── k8s/                        # Kubernetes manifests (applied manually)
+│   ├── frontend-deployment.yml
+│   ├── backend-deployment.yml
+│   ├── postgres-statefulset.yml
+│   ├── ingress.yml
+│   └── hpa.yml                 # Horizontal Pod Autoscaler
+├── deploy/
+│   └── setup.sh               # EC2 bare-metal fallback deploy
 └── README.md
-```
 
----
+🚀 Getting Started
+Prerequisites
+ToolVersionPurposeTerraform>= 1.6Provision EKS clusterkubectl>= 1.29Deploy to KubernetesAWS CLI>= 2.xAWS authenticationDocker>= 24Local image buildNode.js>= 20Local development
+1. Provision Infrastructure (Terraform)
+bashcd Terraform
 
-## 🚀 Deploy on AWS EC2
+# Initialise with remote state
+terraform init
 
-### Prerequisites
+# Review the plan
+terraform plan -out=tfplan
 
-- An AWS EC2 instance running **Ubuntu 22.04+**
-- Security Group allowing inbound traffic on ports **22** (SSH) and **80** (HTTP)
-- SSH access to the instance
+# Apply — provisions VPC, EKS, ECR, IAM roles
+terraform apply tfplan
 
-### Step 1: Transfer the Code to EC2
+EKS Auto Mode handles node provisioning automatically — no node group management needed.
 
-```bash
-# From your local machine
-scp -r -i your-key.pem ./Jerney ubuntu@<EC2_PUBLIC_IP>:~/Jerney
-```
+2. Configure kubectl
+bashaws eks update-kubeconfig \
+  --region ap-south-1 \
+  --name jerney-cluster
+3. Run CI Pipeline
+Push to main or open a PR — the pipeline triggers automatically:
+bashgit checkout devops
+git add .
+git commit -m "feat: your change"
+git push origin devops
+Pipeline stages run in sequence. A failure at any stage blocks the image from being pushed to ECR.
+4. Deploy to Kubernetes (Manual Gate)
+After the CI pipeline passes and image is in ECR:
+bash# Update image tag in manifests
+export IMAGE_TAG=$(git rev-parse --short HEAD)
 
-### Step 2: SSH into the Instance
+# Apply manifests
+kubectl apply -f k8s/
 
-```bash
-ssh -i your-key.pem ubuntu@<EC2_PUBLIC_IP>
-```
+# Verify pods are running
+kubectl get pods -n jerney
+kubectl get ingress -n jerney
 
-### Step 3: Run the Setup Script
+🔒 Security Controls
+StageToolWhat It CatchesCode qualitySonarQubeCode smells, security hotspots, coverage gatesContainer CVEsTrivyHIGH/CRITICAL CVEs in base images and dependenciesSecretsGitHub Secret ScanningAccidental credential commitsIAMLeast-privilege rolesPods use IRSA — no static credentialsNetworkSecurity Groups + NetworkPolicyZero-trust pod-to-pod communication
 
-The `deploy/setup.sh` script installs everything and configures the app automatically:
+⚙️ CI Pipeline Configuration
+The pipeline is defined in .github/workflows/ci.yml and triggers on:
 
-```bash
-cd ~/Jerney
-chmod +x deploy/setup.sh
-./deploy/setup.sh
-```
+Push to main or devops branch
+Pull requests targeting main
 
-This script will:
-1. Update system packages
-2. Install **Node.js 20.x**, **PostgreSQL 16**, **Nginx**, and **PM2**
-3. Create the database and user
-4. Install backend dependencies
-5. Build the React frontend
-6. Configure Nginx as a reverse proxy
-7. Start the backend with PM2 (auto-restarts on crash/reboot)
+Required GitHub Secrets:
+SecretDescriptionAWS_ACCESS_KEY_IDIAM user for ECR pushAWS_SECRET_ACCESS_KEYIAM user secretAWS_REGIONe.g. ap-south-1ECR_REGISTRYYour ECR registry URLSONAR_TOKENSonarCloud project tokenSONAR_HOST_URLSonarQube server URL
 
-### Step 4: Access the App
+🧱 Tech Stack
+LayerTechnologyFrontendReact 18, Vite, NginxBackendNode.js 20, ExpressDatabasePostgreSQL 16ContainersDocker (multi-stage builds)OrchestrationKubernetes (AWS EKS Auto Mode)IaCTerraform >= 1.6CIGitHub ActionsSecurity (SAST)SonarQubeSecurity (container)TrivyRegistryAWS ECR
 
-Open your browser and go to:
+🗺️ Roadmap
 
-```
-http://<EC2_PUBLIC_IP>
-```
+ 3-tier application (React + Node.js + PostgreSQL)
+ Dockerised with multi-stage builds
+ Terraform-provisioned EKS Auto Mode cluster
+ GitHub Actions CI pipeline with security gates
+ SonarQube SAST integration
+ Trivy container vulnerability scanning
+ Kubernetes manifests with HPA
+ ArgoCD GitOps CD — eliminate manual kubectl apply (next project)
+ Prometheus + Grafana observability stack
+ Slack notifications on pipeline failure
 
-### Useful Commands
 
-```bash
-pm2 status                          # Check backend status
-pm2 logs                            # View backend logs
-pm2 restart all                     # Restart backend
-sudo systemctl restart nginx        # Restart Nginx
-sudo -u postgres psql -d jerney_db  # Connect to database
-```
-
----
-
-## 🧑‍💻 Local Development (Without Docker)
-
-### Prerequisites
-
-- Node.js 20+
-- PostgreSQL 16+
-
-### Backend
-
-```bash
-cd backend
-npm install
-
-# Create a .env file (or export these variables)
-export DB_HOST=localhost
-export DB_PORT=5432
-export DB_USER=jerney_user
-export DB_PASSWORD=jerney_pass_2026
-export DB_NAME=jerney_db
-export PORT=5000
-
-npm start
-```
-
-### Frontend
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-The Vite dev server starts on `http://localhost:3000` and proxies `/api` requests to the backend at `http://localhost:5000`.
-
----
-
-## 📡 API Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/health` | Health check |
-| GET | `/api/posts` | Get all posts |
-| GET | `/api/posts/:id` | Get single post with comments |
-| POST | `/api/posts` | Create a new post |
-| PUT | `/api/posts/:id` | Update a post |
-| DELETE | `/api/posts/:id` | Delete a post |
-| GET | `/api/comments/post/:postId` | Get comments for a post |
-| POST | `/api/comments` | Create a comment |
-| DELETE | `/api/comments/:id` | Delete a comment |
-
----
-
-## 🌿 Branch Strategy
-
-| Branch | Purpose |
-|--------|---------|
-| `main` | Source code + EC2 bare-metal deployment |
-| `devops` | Full DevSecOps — Docker, Kubernetes (EKS), Terraform, CI/CD pipeline, security scanning |
-
----
-
-Built with 💜 by the Jerney team. No cap, this blog platform hits different. 🛤️
+👤 Author
+V K Harish Bodapati — DevOps Engineer | AWS | Kubernetes | Terraform
+LinkedIn · GitHub
