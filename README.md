@@ -1,111 +1,120 @@
-📐 Architecture Overview
-Infrastructure Architecture
-┌─────────────────────────────────────────────────────────┐
-│                        AWS Cloud                        │
-│                                                         │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │                  VPC (Multi-AZ)                  │   │
-│  │                                                  │   │
-│  │  ┌────────────────────────────────────────────┐  │   │
-│  │  │           EKS Auto Mode Cluster            │  │   │
-│  │  │                                            │  │   │
-│  │  │  ┌──────────┐  ┌──────────┐  ┌─────────┐   │  │   │
-│  │  │  │ Frontend │  │ Backend  │  │Postgres │   │  │   │
-│  │  │  │  (React) │→ │(Node.js) │→ │   DB    │   │  │   │
-│  │  │  │ Nginx    │  │ Express  │  │         │   │  │   │
-│  │  │  └──────────┘  └──────────┘  └─────────┘   │  │   │
-│  │  │                                            │  │   │
-│  │  │  ┌──────────────────────────────────────┐  │  │   │
-│  │  │  │   AWS Load Balancer (Ingress)        │  │  │   │
-│  │  │  └──────────────────────────────────────┘  │  │   │
-│  │  └────────────────────────────────────────────┘  │   │
-│  │                                                  │   │
-│  │  ┌─────────┐  ┌─────────┐  ┌──────────────────┐  │   │
-│  │  │   ECR   │  │   S3    │  │  Terraform State │  │   │
-│  │  │(Images) │  │(Logs)   │  │  (Remote Backend)│  │   │
-│  │  └─────────┘  └─────────┘  └──────────────────┘  │   │
-│  └──────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────┘
-CI Pipeline Flow
-  Developer Push / PR
-         │
-         ▼
-  ┌─────────────┐
-  │  Checkout   │  GitHub Actions triggered on push to main / PR
-  └──────┬──────┘
-         │
-         ▼
-  ┌─────────────┐
-  │  Lint &     │  ESLint (frontend) · Node.js test runner (backend)
-  │  Unit Test  │  ✗ Fails here → PR blocked, no image built
-  └──────┬──────┘
-         │
-         ▼
-  ┌─────────────┐
-  │  SAST Scan  │  SonarQube code quality & security analysis
-  │  (SonarQube)│  Quality Gate enforced — fails pipeline on violations
-  └──────┬──────┘
-         │
-         ▼
-  ┌─────────────┐
-  │  Docker     │  Multi-stage Dockerfile build (frontend + backend)
-  │  Build      │  Image tagged with git SHA for full traceability
-  └──────┬──────┘
-         │
-         ▼
-  ┌─────────────┐
-  │  Container  │  Trivy scans image for CVEs (HIGH/CRITICAL = fail)
-  │  Scan       │  No unpatched critical vulnerabilities reach ECR
-  │  (Trivy)    │
-  └──────┬──────┘
-         │
-         ▼
-  ┌─────────────┐
-  │  Push to    │  Image pushed to AWS ECR with SHA + latest tags
-  │  ECR        │  Only clean images are published
-  └──────┬──────┘
-         │
-         ▼
-  ┌─────────────┐
-  │  Manual K8s │  kubectl apply (intentional gate)
-  │  Deploy     │  Helm manifests in ./k8s applied after review
-  └─────────────┘
-       ↑
-   CD gap — planned: ArgoCD GitOps (next project)
+## 📐 Infrastructure Architecture
 
-🗂️ Project Structure
-3-tire-CI_CD-DevSecOps/
-├── .github/
-│   └── workflows/
-│       └── ci.yml              # GitHub Actions CI pipeline
+```mermaid
+graph TB
+    DEV([👨‍💻 Developer])
+    USER([🌐 Internet Traffic])
+
+    subgraph AWS ["☁️ AWS Cloud · ap-south-1"]
+        subgraph VPC ["🔒 VPC · Multi-AZ"]
+            subgraph EKS ["⚙️ EKS Auto Mode Cluster"]
+                FE["⚛️ Frontend\nReact · Nginx\nPort 80"]
+                BE["🟢 Backend\nNode.js · Express\nPort 5000"]
+                DB["🐘 PostgreSQL\nStatefulSet\nPort 5432"]
+                ALB["⚖️ AWS Load Balancer\nIngress Controller"]
+                HPA["📈 HPA\nAuto-scaling"]
+            end
+
+            ECR["📦 AWS ECR\nContainer Registry"]
+            S3["🪣 S3 Bucket\nTerraform Remote State"]
+            IAM["🔑 IAM · IRSA\nLeast-privilege Roles"]
+        end
+    end
+
+    USER -->|HTTP| ALB
+    ALB --> FE
+    FE -->|API calls| BE
+    BE -->|SQL| DB
+    HPA -.->|scales| FE
+    HPA -.->|scales| BE
+    ECR -.->|pull image| EKS
+    DEV -->|kubectl / Terraform| EKS
+    DEV -->|terraform apply| S3
+```
+
+## 🗂️ Project Structure
+
+```
+3-tire-CI_CD-DevSecOps/ (devops branch)
+│
+├── .github/workflows/
+│   └── ci.yml                 ← GitHub Actions CI pipeline
+│
 ├── Terraform/
-│   ├── main.tf                 # EKS Auto Mode cluster
-│   ├── vpc.tf                  # VPC, subnets, security groups
-│   ├── ecr.tf                  # ECR repositories
+│   ├── main.tf                ← EKS Auto Mode cluster
+│   ├── vpc.tf                 ← VPC, subnets, security groups
+│   ├── ecr.tf                 ← ECR repositories
 │   ├── variables.tf
 │   └── outputs.tf
-├── frontend/                   # React (Vite) app
+│
+├── frontend/                  ← React (Vite) app
 │   ├── src/
-│   ├── Dockerfile              # Multi-stage build → Nginx
-│   ├── nginx.conf
-│   └── package.json
-├── backend/                    # Node.js Express API
+│   ├── Dockerfile             ← Multi-stage → Nginx
+│   └── nginx.conf
+│
+├── backend/                   ← Node.js Express API
 │   ├── src/
-│   ├── Dockerfile              # Multi-stage build → Node slim
-│   └── package.json
-├── k8s/                        # Kubernetes manifests (applied manually)
+│   └── Dockerfile             ← Multi-stage → Node slim
+│
+├── k8s/                       ← Kubernetes manifests (manual apply)
 │   ├── frontend-deployment.yml
 │   ├── backend-deployment.yml
 │   ├── postgres-statefulset.yml
 │   ├── ingress.yml
-│   └── hpa.yml                 # Horizontal Pod Autoscaler
-├── deploy/
-│   └── setup.sh               # EC2 bare-metal fallback deploy
-└── README.md
+│   └── hpa.yml
+│
+└── deploy/
+    └── setup.sh               ← EC2 bare-metal fallback
+```
+## 🔄 CI Pipeline Flow
+
+```mermaid
+flowchart TD
+    A([👨‍💻 git push / PR opened]) --> B
+
+    B[📥 Checkout Code\nactions/checkout@v4]
+    B --> C
+
+    C{🧪 Lint & Unit Test\nESLint · npm test}
+    C -->|✅ pass| D
+    C -->|❌ fail| F1([🚫 Pipeline fails\nPR blocked])
+
+    D{🔍 SAST — SonarQube\nQuality Gate}
+    D -->|✅ pass| E
+    D -->|❌ fail| F2([🚫 Pipeline fails\nQuality gate violated])
+
+    E[🐳 Docker Build\nMulti-stage · tagged with git SHA]
+    E --> G
+
+    G{🛡️ Container Scan — Trivy\nHIGH / CRITICAL CVEs}
+    G -->|✅ clean| H
+    G -->|❌ vulnerable| F3([🚫 Pipeline fails\nVulnerable image blocked])
+
+    H[📦 Push to AWS ECR\nSHA tag + latest tag]
+    H --> I
+
+    I([👨‍💻 Manual: kubectl apply\nIntentional review gate\n⚠️ CD via ArgoCD — planned next])
+
+    style F1 fill:#FCEBEB,stroke:#A32D2D,color:#A32D2D
+    style F2 fill:#FCEBEB,stroke:#A32D2D,color:#A32D2D
+    style F3 fill:#FCEBEB,stroke:#A32D2D,color:#A32D2D
+    style I fill:#FAEEDA,stroke:#BA7517,color:#633806
+    style H fill:#EAF3DE,stroke:#3B6D11,color:#27500A
+```
+
+> **Why manual deploy?** The `kubectl apply` step is a deliberate review gate — CD automation via ArgoCD is the [next planned project](#roadmap).
+
+
 
 🚀 Getting Started
 Prerequisites
-ToolVersionPurposeTerraform>= 1.6Provision EKS clusterkubectl>= 1.29Deploy to KubernetesAWS CLI>= 2.xAWS authenticationDocker>= 24Local image buildNode.js>= 20Local development
+ToolVersionPurposeTerraform>= 1.6
+Provision EKS clusterkubectl>= 1.29
+Deploy to Kubernetes AWS CLI>= 2.x
+AWS authenticationDocker>= 24
+Local image buildNode.js>= 20
+
+Local development
 1. Provision Infrastructure (Terraform)
 bashcd Terraform
 
@@ -153,7 +162,7 @@ Push to main or devops branch
 Pull requests targeting main
 
 Required GitHub Secrets:
-SecretDescriptionAWS_ACCESS_KEY_IDIAM user for ECR pushAWS_SECRET_ACCESS_KEYIAM user secretAWS_REGIONe.g. ap-south-1ECR_REGISTRYYour ECR registry URLSONAR_TOKENSonarCloud project tokenSONAR_HOST_URLSonarQube server URL
+Secret Description AWS_ACCESS_KEY_IDIAM user for ECR pushAWS_SECRET_ACCESS_KEYIAM user secretAWS_REGIONe.g. ap-south-1ECR_REGISTRYYour ECR registry URLSONAR_TOKENSonarCloud project tokenSONAR_HOST_URLSonarQube server URL
 
 🧱 Tech Stack
 LayerTechnologyFrontendReact 18, Vite, NginxBackendNode.js 20, ExpressDatabasePostgreSQL 16ContainersDocker (multi-stage builds)OrchestrationKubernetes (AWS EKS Auto Mode)IaCTerraform >= 1.6CIGitHub ActionsSecurity (SAST)SonarQubeSecurity (container)TrivyRegistryAWS ECR
@@ -171,7 +180,5 @@ LayerTechnologyFrontendReact 18, Vite, NginxBackendNode.js 20, ExpressDatabasePo
  Prometheus + Grafana observability stack
  Slack notifications on pipeline failure
 
-
-👤 Author
+👤
 V K Harish Bodapati — DevOps Engineer | AWS | Kubernetes | Terraform
-LinkedIn · GitHub
